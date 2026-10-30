@@ -98,15 +98,12 @@ export function renderDieta(view) {
         <div class="stat"><div class="v num" style="font-size:16px;color:var(--carb)">${fmt.int(tot.c)} g</div><div class="k">carb. / ${fmt.int(meta.c)}</div></div>
         <div class="stat"><div class="v num" style="font-size:16px;color:var(--fat)">${fmt.int(tot.g)} g</div><div class="k">gord. / ${fmt.int(meta.g)}</div></div>
       </div>
-      ${meta.alcoolHoje ? `<small>🍸 + ${fmt.k(meta.alcoolHoje)} kcal de ${esc(state.profile.prefs.alcool.bebida.toLowerCase())} hoje (já previstos no saldo da semana).</small>` : ''}
+      ${meta.alcoolHoje ? `<small>🍸 Dia comum de bebida: ~${fmt.k(meta.alcoolHoje)} kcal reservadas (já previstas no saldo da semana).</small>` : ''}
     </div>
 
     ${doDia.map(([r, p]) => p ? slotCard(r, p) : `<div class="card"><h3>${esc(r.nome)}</h3><small>Sem opções para esta refeição — gere um novo cardápio.</small></div>`).join('')}
 
-    ${alc.total ? `<div class="card tight"><h2>🍸 Fim de semana</h2>
-      <p style="font-size:14px">${esc(state.profile.prefs.alcool.bebida)}: ${state.profile.prefs.alcool.doses} dose(s) ≈ <b>${fmt.k(alc.kcalDia)} kcal</b> por dia de bebida
-      (${fmt.k(alc.total)} kcal/semana). Para caber no saldo semanal, cada dia tem <b>~${fmt.k(alc.porDia)} kcal a menos</b> de carboidrato na comida — a proteína fica igual.</p>
-      ${plano.estrategia ? `<p class="muted" style="font-size:14px">${esc(plano.estrategia)}</p>` : ''}</div>` : ''}
+    ${alc.est.ativo ? alcoolCard(alc, plano) : ''}
 
     <details class="card tight"><summary><h2 style="display:inline">🛒 Lista de compras da semana</h2></summary>${listaCompras(seg)}</details>
 
@@ -129,11 +126,32 @@ export function renderDieta(view) {
     }
     const tr = t.closest('[data-trocar]');
     if (tr) { trocarSheet(tr.dataset.trocar); return; }
+    if (t.closest('[data-act=editar-perfil]')) { location.hash = 'editar-perfil'; return; }
     if (t.closest('[data-act=novo]')) {
       const ok = await confirmSheet({ title: 'Gerar novo cardápio?', text: 'O cardápio atual será substituído. Seu diário não muda.', ok: 'Gerar novo' });
       if (ok) { state.plano = null; save(); gerar(''); }
     }
   };
+}
+
+// Bebida alcoólica: o que a pessoa contou, como foi entendido e o que o "nutricionista" recomenda.
+function alcoolCard(alc, plano) {
+  const a = state.profile.prefs.alcool;
+  const ia = alc.ia;
+  const desatualizado = plano.alcool && !ia && !(a.kcalOcasiao > 0);
+  const recs = ia?.recomendacoes?.length ? ia.recomendacoes : null;
+  return `<div class="card tight"><h2>🍸 Bebida alcoólica</h2>
+    ${a.descricao ? `<small>Você contou: “${esc(a.descricao)}”</small>` : ''}
+    ${ia?.leitura ? `<p style="font-size:14px">${esc(ia.leitura)}</p>` : ''}
+    <div class="stat"><div class="k">${alc.fonte === 'ia' ? 'Estimativa do Claude' : a.kcalOcasiao > 0 ? 'Valor que você informou' : 'Estimativa inicial do app'}</div>
+      <div class="v num" style="font-size:17px">~${fmt.k(alc.total)} kcal/semana</div>
+      <small>${alc.fonte === 'app' && !(a.kcalOcasiao > 0) ? esc(alc.est.itens.map((i) => i.texto).join(' + ')) + '. ' : ''}Para caber, cada dia tem ~${fmt.k(alc.porDia)} kcal a menos de carboidrato na comida — a proteína fica igual.</small></div>
+    ${recs ? `<ul class="plain">${recs.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`
+      : plano.estrategia ? `<p class="muted" style="font-size:14px">${esc(plano.estrategia)}</p>` : ''}
+    ${desatualizado ? '<small>Você mudou a descrição depois do cardápio — gere um novo para o Claude revisar.</small>' : ''}
+    ${!plano.alcool && !plano.estrategia ? '<small>Ao gerar o cardápio, o Claude revisa essa estimativa e sugere como encaixar.</small>' : ''}
+    <button class="btn ghost" style="align-self:flex-start" data-act="editar-perfil">Editar como costuma ser</button>
+  </div>`;
 }
 
 function keyNotice() {
@@ -199,8 +217,6 @@ function listaCompras(seg) {
       }
     }
   }
-  const alc = state.profile.prefs?.alcool;
-  if (alc?.ativo && alc.dias.length) somar('X2', alc.doses * 50 * alc.dias.length);
   const grupos = {};
   for (const [id, g] of acc) {
     const f = getFood(id);

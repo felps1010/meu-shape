@@ -21,10 +21,21 @@ function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return emptyState();
-    return { ...emptyState(), ...JSON.parse(raw) };
+    return migrate({ ...emptyState(), ...JSON.parse(raw) });
   } catch {
     return emptyState();
   }
+}
+
+// Ajusta dados salvos por versões antigas do app.
+function migrate(s) {
+  const a = s.profile?.prefs?.alcool;
+  if (a && !('descricao' in a)) {
+    // v1 tinha campos fixos (bebida, doses, kcal por dose); agora é texto livre.
+    a.descricao = [a.bebida, a.doses ? `(${a.doses} doses)` : ''].filter(Boolean).join(' ');
+    delete a.bebida; delete a.doses; delete a.kcalDose;
+  }
+  return s;
 }
 
 export const state = load();
@@ -61,7 +72,7 @@ export function importBackup(text) {
     throw new Error('Arquivo não parece um backup do app.');
   }
   const apiKey = state.config.apiKey;
-  replaceState(data);
+  replaceState(migrate(data));
   if (!state.config.apiKey) state.config.apiKey = apiKey;
   save();
 }

@@ -40,7 +40,7 @@ const OPCAO = {
 };
 const PLANO = {
   type: 'object', additionalProperties: false,
-  required: ['refeicoes', 'estrategia_fim_de_semana', 'preparo_marmitas', 'dicas'],
+  required: ['refeicoes', 'alcool', 'preparo_marmitas', 'dicas'],
   properties: {
     refeicoes: {
       type: 'array',
@@ -49,7 +49,15 @@ const PLANO = {
         properties: { slot_id: { type: 'string' }, opcoes: { type: 'array', items: OPCAO } },
       },
     },
-    estrategia_fim_de_semana: { type: 'string' },
+    alcool: {
+      type: 'object', additionalProperties: false,
+      required: ['leitura', 'kcal_semana', 'recomendacoes'],
+      properties: {
+        leitura: { type: 'string', description: 'como você entendeu o hábito: o quê, quanto, com que frequência' },
+        kcal_semana: { type: 'number', description: 'estimativa realista da média semanal em kcal (álcool + misturadores); 0 se não bebe' },
+        recomendacoes: { type: 'array', items: { type: 'string' } },
+      },
+    },
     preparo_marmitas: { type: 'array', items: { type: 'string' }, description: 'roteiro de preparo das marmitas da semana, passo a passo' },
     dicas: { type: 'array', items: { type: 'string' } },
   },
@@ -100,18 +108,28 @@ function perfilTexto() {
     const m = metaDoDia(k);
     return `${DIAS_LONGOS[(i + 1) % 7]} (${DAY_TYPES[m.tipo].nome}): ${m.kcal} kcal, P ${Math.round(m.p)} g, C ${Math.round(m.c)} g, G ${Math.round(m.g)} g`;
   }).join('\n');
-  const alc = alcoolSemanal();
   return `Pessoa: ${p.sexo === 'F' ? 'mulher' : 'homem'}, ${p.idade} anos, ${p.altura} cm, ${pesoAtual().toFixed(1)} kg (média recente). Objetivo: ${OBJETIVOS[p.objetivo].nome}.
 Rotina: ${rotina}.
 Ama comer: ${pr.ama || '—'}
 Não come / não gosta: ${pr.naoCome || '—'}
 Restrições: ${pr.restricoes || 'nenhuma'}
 Orçamento: ${pr.orcamento || 'médio'}. Leva marmita: ${pr.marmita ? 'sim' : 'não'}.
-Bebidas: ${pr.bebidas || '—'}
-${alc.total ? `Fim de semana: ${pr.alcool.doses} dose(s) de ${pr.alcool.bebida || 'gin'} com refrigerante zero em ${pr.alcool.dias.map((d) => DIAS_LONGOS[d]).join(' e ')} (~${Math.round(alc.total)} kcal na semana). O app já desconta ~${Math.round(alc.porDia)} kcal/dia da comida para caber no saldo semanal.` : ''}
+Bebidas do dia a dia: ${pr.bebidas || '—'}
+${alcoolTexto()}
 
-Metas de comida desta semana (já descontado o álcool):
+Metas de comida desta semana (já descontada a reserva para bebida alcoólica):
 ${metas}`;
+}
+
+function alcoolTexto() {
+  const a = state.profile.prefs?.alcool;
+  if (!a?.ativo) return 'Bebida alcoólica: não costuma beber.';
+  const alc = alcoolSemanal();
+  const e = alc.est;
+  const dias = a.dias?.length ? a.dias.map((d) => DIAS_LONGOS[d]).join(', ') : 'varia';
+  return `Bebida alcoólica, nas palavras da pessoa: "${a.descricao || '(sem descrição)'}". Dias mais comuns: ${dias}.
+Estimativa automática do app (heurística simples): ${e.itens.map((i) => i.texto).join(' + ') || '—'} → ~${e.porOcasiao} kcal por ocasião, ~${e.kcalSemana} kcal/semana.${a.kcalOcasiao > 0 ? ` A pessoa informou ${a.kcalOcasiao} kcal por ocasião — respeite esse valor.` : ''}
+Hoje o app reserva ~${Math.round(alc.porDia)} kcal/dia (tirados do carboidrato) para isso.`;
 }
 
 function refeicoesTexto() {
@@ -176,7 +194,7 @@ Refeições do dia (crie 3 opções intercambiáveis para cada uma, com quantida
 ${refeicoesTexto()}
 
 Também:
-- estrategia_fim_de_semana: como encaixar a bebida do fim de semana no saldo semanal sem perder o resultado (2–4 frases práticas).
+- alcool: aqui você é um nutricionista que recomenda, sem julgar nem proibir. Leia a descrição da pessoa (pode ser vaga: "às vezes", "uma lata", "uns drinks"), diga em 1–2 frases como entendeu (o quê, quanto, frequência), dê sua estimativa realista da média semanal em kcal (o app usa esse número para a reserva; 0 se não bebe) e 3–5 recomendações práticas e personalizadas para encaixar no plano sem perder o resultado (escolhas e misturadores, comer antes, hidratação, dia seguinte, quando reduzir). Se não bebe, leitura vazia e lista vazia.
 - preparo_marmitas: roteiro curto para preparar as marmitas da semana de uma vez (ordem das tarefas, quantidades aproximadas, como armazenar).
 - dicas: 3 a 5 dicas curtas e específicas para esta pessoa.
 ${extra ? '\nPedido extra do usuário: ' + extra : ''}`;
@@ -188,10 +206,18 @@ ${extra ? '\nPedido extra do usuário: ' + extra : ''}`;
     slots[r.slot_id] = r.opcoes.map((o) => limparOpcao(o, problemas)).filter((o) => o.itens.length);
   }
   if (TACO.length && !Object.keys(slots).length) throw new Error('A IA não devolveu refeições válidas. Tente de novo.');
+  const a = state.profile.prefs?.alcool;
+  const kcalIa = Number(res.alcool?.kcal_semana);
   return {
     criadoEm: new Date().toISOString(),
     slots,
-    estrategia: res.estrategia_fim_de_semana,
+    // Guardada junto com a descrição: se a pessoa mudar o texto, volta a valer a estimativa local.
+    alcool: a?.ativo && res.alcool ? {
+      descricao: a.descricao,
+      kcalSemana: Number.isFinite(kcalIa) ? Math.round(Math.min(5000, Math.max(0, kcalIa))) : alcoolSemanal().est.kcalSemana,
+      leitura: res.alcool.leitura,
+      recomendacoes: res.alcool.recomendacoes || [],
+    } : null,
     preparo: res.preparo_marmitas,
     dicas: res.dicas,
     escolhas: {},

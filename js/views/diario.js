@@ -4,6 +4,7 @@ import { esc, $, toast, openSheet, ring, bar, icons, DISCLAIMER } from '../ui.js
 import { getFood, macrosFor, searchFoods, touchRecent, quickPortions, sumMacros, fmt } from '../foods.js';
 import { dkey, addDays, parseKey, DIAS_LONGOS, DAY_TYPES, metaDoDia, slotTarget, weekStart, verificarAjuste } from '../calc.js';
 import { planoDoDia } from './dieta.js';
+import { ehAlcool } from '../alcool.js';
 import { revisaoCard, handleRevisao } from './evolucao.js';
 
 let dia = dkey();
@@ -56,7 +57,7 @@ export function renderDiario(view) {
             ${bar('fat', 'Gordura', tot.g, meta.g)}
           </div>
         </div>
-        ${meta.alcoolHoje ? `<small>🍸 Inclui ${fmt.k(meta.alcoolHoje)} kcal reservadas para ${esc(state.profile.prefs.alcool.bebida.toLowerCase())}. Comida: ${fmt.k(totComida.kcal)} / ${fmt.k(meta.kcal)} kcal.</small>` : ''}
+        ${meta.alcoolHoje ? `<small>🍸 Inclui ${fmt.k(meta.alcoolHoje)} kcal reservadas para bebida (média do seu hábito). Comida: ${fmt.k(totComida.kcal)} / ${fmt.k(meta.kcal)} kcal.</small>` : ''}
       </div>
 
       ${refs.map((r) => mealCard(r, ents.filter((e) => e.slot === r.id))).join('')}
@@ -209,7 +210,7 @@ function portionStep(el, food, slotId, close, redraw) {
   const add = (g) => {
     if (!(g > 0)) { toast('Informe a quantidade'); return; }
     const m = macrosFor(food, g);
-    addEntry(dia, { slot: slotId, foodId: food.id, nome: food.nome, gramas: g, ...m, alcool: food.id === 'X2' || undefined });
+    addEntry(dia, { slot: slotId, foodId: food.id, nome: food.nome, gramas: g, ...m, alcool: ehAlcool(food.nome) || undefined });
     touchRecent(food.id);
     save(); close(); redraw();
     toast(`+ ${fmt.k(m.kcal)} kcal`);

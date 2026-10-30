@@ -1,6 +1,7 @@
 // Cálculos: metas do dia, tendência de peso, ajuste automático e escala das porções.
 import { state } from './store.js';
 import { getFood, macrosFor } from './foods.js';
+import { estimarAlcool } from './alcool.js';
 
 // ---------- datas (sempre no fuso local, formato AAAA-MM-DD) ----------
 export const dkey = (d = new Date()) => {
@@ -86,12 +87,17 @@ export function tipoDoDia(k) {
   return state.profile?.rotina?.[dow(k)] || 'descanso';
 }
 
+// Reserva semanal para bebida alcoólica. Vale a estimativa do Claude (feita ao gerar o
+// cardápio para a mesma descrição); antes disso, a estimativa local a partir do texto.
 export function alcoolSemanal() {
   const a = state.profile?.prefs?.alcool;
-  if (!a?.ativo || !a.dias?.length) return { total: 0, porDia: 0, doses: 0 };
-  const kcalDia = a.doses * a.kcalDose;
-  const total = kcalDia * a.dias.length;
-  return { total, porDia: total / 7, kcalDia, doses: a.doses };
+  const est = estimarAlcool(a);
+  if (!est.ativo) return { total: 0, porDia: 0, kcalDia: 0, est, fonte: null };
+  const ia = state.plano?.alcool;
+  const usaIa = ia && ia.descricao === a.descricao && !(a.kcalOcasiao > 0);
+  const total = usaIa ? ia.kcalSemana : est.kcalSemana;
+  const dias = a.dias?.length || 0;
+  return { total, porDia: total / 7, kcalDia: dias ? total / dias : 0, est, ia: usaIa ? ia : null, fonte: usaIa ? 'ia' : 'app' };
 }
 
 // Meta do dia. `kcal` é o total para comida; o álcool do fim de semana é
@@ -103,7 +109,7 @@ export function metaDoDia(k = dkey()) {
   const gasto = tmb(p, peso) * DAY_TYPES[tipo].fator;
   const kcalTotal = Math.round(gasto * OBJETIVOS[p.objetivo].mult + (p.ajusteKcal || 0));
   const alc = alcoolSemanal();
-  const alcoolHoje = p.prefs?.alcool?.ativo && p.prefs.alcool.dias.includes(dow(k)) ? alc.kcalDia : 0;
+  const alcoolHoje = alc.total && p.prefs.alcool.dias?.includes(dow(k)) ? Math.round(alc.kcalDia) : 0;
   const kcal = Math.round(kcalTotal - alc.porDia);
   const prot = 2 * peso;
   const gord = Math.max(0.8 * peso, (0.25 * kcal) / 9);

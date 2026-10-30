@@ -35,7 +35,7 @@ export function renderPerfil(view) {
         ${p.ajusteKcal ? `Ajuste pela tendência: ${p.ajusteKcal > 0 ? '+' : ''}${p.ajusteKcal} kcal.` : ''}
         Proteína 2 g/kg, gordura ≥ 0,8 g/kg, carboidrato completa.</small>
       <small>Hoje (${DAY_TYPES[m.tipo].nome}): <b>${fmt.k(m.kcal)} kcal</b> · P ${fmt.int(m.p)} g · C ${fmt.int(m.c)} g · G ${fmt.int(m.g)} g
-        ${m.alcoolDesconto ? ` (já com −${m.alcoolDesconto} kcal/dia para a bebida do fim de semana)` : ''}</small>
+        ${m.alcoolDesconto ? ` (já com −${m.alcoolDesconto} kcal/dia reservadas para bebida alcoólica)` : ''}</small>
     </div>
 
     <div class="card">

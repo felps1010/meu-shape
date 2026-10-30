@@ -2,6 +2,8 @@
 import { state, save, uid } from '../store.js';
 import { esc, $, toast, DISCLAIMER } from '../ui.js';
 import { DAY_TYPES, OBJETIVOS, DIAS, metaDoDia, dkey, addDays, weekStart } from '../calc.js';
+import { estimarAlcool } from '../alcool.js';
+import { fmt } from '../foods.js';
 
 // Valores iniciais genéricos (o código é público). Tudo editável.
 function defaults() {
@@ -22,10 +24,23 @@ function defaults() {
       orcamento: 'medio',
       marmita: false,
       bebidas: '',
-      alcool: { ativo: false, bebida: 'Gin com refrigerante zero', dias: [6], doses: 2, kcalDose: 110 },
+      alcool: { ativo: false, descricao: '', dias: [], kcalOcasiao: '' },
     },
     ajusteKcal: 0,
   };
+}
+
+// Prévia da estimativa local, atualizada enquanto a pessoa digita.
+function alcEstimativa(a) {
+  if (!a.descricao && !(a.kcalOcasiao > 0)) {
+    return '<small>Conte o que, quanto e com que frequência. O app estima as calorias e, ao gerar o cardápio, o Claude revisa como um nutricionista e sugere como encaixar sem perder o resultado.</small>';
+  }
+  const e = estimarAlcool({ ...a, ativo: true });
+  return `<div class="k">Estimativa inicial</div>
+    <div class="v num" style="font-size:17px">~${fmt.k(e.porOcasiao)} kcal por ocasião · ~${fmt.k(e.kcalSemana)} kcal/semana</div>
+    <small>${esc(e.itens.map((i) => i.texto).join(' + '))}</small>
+    ${e.obs.length ? `<small style="display:block;margin-top:4px">${esc(e.obs.join(' '))}</small>` : ''}
+    <small style="display:block;margin-top:4px">O Claude revisa ao gerar o cardápio. A reserva sai do carboidrato da semana; a proteína não muda.</small>`;
 }
 
 const STEPS = ['Sobre você', 'Objetivo', 'Rotina', 'Refeições', 'Preferências', 'Suas metas'];
@@ -101,16 +116,16 @@ export function renderOnboarding(view, done) {
         <label class="row" style="font-size:14px"><input type="checkbox" name="marmita" ${p.marmita ? 'checked' : ''}> Levo marmita</label>
         <label class="field">Bebidas do dia a dia<input type="text" name="bebidas" value="${esc(p.bebidas)}"></label>
         <div class="divider"></div>
-        <label class="row" style="font-size:14px;font-weight:650"><input type="checkbox" name="alc-ativo" ${a.ativo ? 'checked' : ''}> Bebida alcoólica no fim de semana</label>
+        <label class="row" style="font-size:14px;font-weight:650"><input type="checkbox" name="alc-ativo" ${a.ativo ? 'checked' : ''}> Costumo beber de vez em quando</label>
         <div class="stack" ${a.ativo ? '' : 'hidden'} id="alc-box">
-          <label class="field">O quê<input type="text" name="alc-bebida" value="${esc(a.bebida)}"></label>
-          <div class="grid2">
-            <label class="field">Doses por dia<input type="number" inputmode="numeric" name="alc-doses" value="${a.doses}"></label>
-            <label class="field">kcal por dose<input type="number" inputmode="numeric" name="alc-kcal" value="${a.kcalDose}"></label>
-          </div>
-          <div class="field" style="font-size:13px;color:var(--muted);font-weight:600">Em quais dias
-            <div class="chips" data-alc-dias>${[5, 6, 0].map((i) => `<button type="button" class="chip ${a.dias.includes(i) ? 'on' : ''}" data-v="${i}">${DIAS[i]}</button>`).join('')}</div></div>
-          <small>Gin 50 ml ≈ 110 kcal; com refri zero não soma nada. O app tira um pouco de carboidrato de cada dia da semana para caber.</small>
+          <label class="field">Como costuma ser? Escreva do seu jeito
+            <textarea name="alc-descricao" placeholder="ex.: às vezes um gin com refri zero no sábado; umas 3 latas de cerveja no churrasco">${esc(a.descricao)}</textarea></label>
+          <div class="field" style="font-size:13px;color:var(--muted);font-weight:600">Dias mais comuns (deixe em branco se varia)
+            <div class="chips" data-alc-dias>${[5, 6, 0, 1, 2, 3, 4].map((i) => `<button type="button" class="chip ${a.dias.includes(i) ? 'on' : ''}" data-v="${i}">${DIAS[i]}</button>`).join('')}</div></div>
+          <div class="stat" id="alc-est">${alcEstimativa(a)}</div>
+          <details><summary style="font-size:13px;color:var(--muted)">Sei as calorias por ocasião</summary>
+            <label class="field" style="margin-top:6px">kcal por ocasião (opcional — substitui a estimativa)
+              <input type="number" inputmode="numeric" name="alc-kcal" value="${a.kcalOcasiao || ''}" placeholder="ex.: 300"></label></details>
         </div>`;
     }
     // Resumo
@@ -134,9 +149,8 @@ export function renderOnboarding(view, done) {
       if (n.startsWith('alc-')) {
         const a = d.prefs.alcool;
         if (n === 'alc-ativo') a.ativo = val;
-        if (n === 'alc-bebida') a.bebida = val;
-        if (n === 'alc-doses') a.doses = Number(val) || 0;
-        if (n === 'alc-kcal') a.kcalDose = Number(val) || 0;
+        if (n === 'alc-descricao') a.descricao = val.trim();
+        if (n === 'alc-kcal') a.kcalOcasiao = Number(val) || '';
       } else if (['ama', 'naoCome', 'restricoes', 'bebidas', 'marmita'].includes(n)) {
         d.prefs[n] = val;
       } else if (['idade', 'altura', 'peso'].includes(n)) {
@@ -207,6 +221,11 @@ export function renderOnboarding(view, done) {
   };
   view.onchange = (e) => {
     if (e.target.name === 'alc-ativo') { collect(); draw(); }
+  };
+  view.oninput = (e) => {
+    if (!e.target.name?.startsWith('alc-')) return;
+    collect();
+    $('#alc-est', view).innerHTML = alcEstimativa(d.prefs.alcool);
   };
 
   draw();

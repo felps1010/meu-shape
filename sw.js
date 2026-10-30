@@ -1,10 +1,10 @@
 // Service worker: deixa o app abrir offline.
 // Ao mudar qualquer arquivo do app, aumente VERSION para os celulares baixarem a versão nova.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `meu-shape-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/app.js', 'js/store.js', 'js/foods.js', 'js/taco-data.js', 'js/calc.js', 'js/ai.js', 'js/ui.js',
+  'js/app.js', 'js/store.js', 'js/alcool.js', 'js/foods.js', 'js/taco-data.js', 'js/calc.js', 'js/ai.js', 'js/ui.js',
   'js/views/onboarding.js', 'js/views/diario.js', 'js/views/dieta.js',
   'js/views/evolucao.js', 'js/views/pratos.js', 'js/views/perfil.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
